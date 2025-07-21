@@ -70,7 +70,7 @@ class PolylineGroup:
 class DXFApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Excel to DXF Polyline Generator")
+        self.root.title("Add Polyline to AutoCad via Excel | v1.0 by Pendar")
         self.groups = []
 
         top_frame = ttk.Frame(root, padding=10)
