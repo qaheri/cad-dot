@@ -5,21 +5,19 @@ import ezdxf
 import os
 
 def rgb_to_aci(r, g, b):
-    """Approximate ACI index from RGB for AutoCAD"""
-    # Simplified color mapping for common colors
     color_map = {
         (255, 0, 0): 1, (255, 255, 0): 2, (0, 255, 0): 3,
         (0, 255, 255): 4, (0, 0, 255): 5, (255, 0, 255): 6,
         (255, 255, 255): 7
     }
-    return color_map.get((r, g, b), 7)  # default to white
+    return color_map.get((r, g, b), 7)
 
 class PolylineGroup:
     def __init__(self, parent, index, remove_callback):
         self.frame = ttk.LabelFrame(parent, text=f"Polyline {index+1}")
         self.index = index
         self.remove_callback = remove_callback
-        self.color_rgb = (255, 0, 0)  # Default red
+        self.color_rgb = (255, 0, 0)
         self.color_aci = 1
 
         self.x_col = self._add_row("X Column (A-Z):", 0)
@@ -30,12 +28,10 @@ class PolylineGroup:
         self.y_from = self._add_row("Y Row From:", 1, col_offset=2)
         self.y_to = self._add_row("Y Row To:", 2, col_offset=2)
 
-        # Color Picker
         ttk.Label(self.frame, text="Color:").grid(row=3, column=0, sticky="e")
         self.color_button = ttk.Button(self.frame, text="Pick Color", command=self.pick_color)
         self.color_button.grid(row=3, column=1, sticky="w")
 
-        # Remove
         self.remove_btn = ttk.Button(self.frame, text="Remove", command=self.remove)
         self.remove_btn.grid(row=3, column=2, columnspan=2, sticky="e")
 
@@ -95,10 +91,10 @@ class DXFApp:
         options_frame = ttk.Frame(root, padding=10)
         options_frame.pack(fill=tk.X)
 
-        ttk.Label(options_frame, text="Output DXF Filename:").pack(side=tk.LEFT)
+        ttk.Label(options_frame, text="Output DXF Name:").pack(side=tk.LEFT)
         self.output_entry = ttk.Entry(options_frame, width=30)
         self.output_entry.pack(side=tk.LEFT, padx=5)
-        self.output_entry.insert(0, "output_polyline.dxf")
+        self.output_entry.insert(0, "output")  # default value without extension
 
         self.debug_var = tk.BooleanVar()
         ttk.Checkbutton(options_frame, text="Debug Mode", variable=self.debug_var).pack(side=tk.LEFT, padx=5)
@@ -139,15 +135,17 @@ class DXFApp:
         try:
             file_path = self.file_entry.get()
             sheet = self.sheet_var.get()
-            output_name = self.output_entry.get()
+            output_base = self.output_entry.get().strip()
             debug = self.debug_var.get()
 
             if not os.path.exists(file_path):
                 raise FileNotFoundError("Excel file not found.")
             if not sheet:
                 raise ValueError("No sheet selected.")
-            if not output_name.endswith(".dxf"):
-                output_name += ".dxf"
+            if not output_base:
+                raise ValueError("Output filename cannot be empty.")
+
+            output_name = output_base + ".dxf"
 
             df = pd.read_excel(file_path, sheet_name=sheet, header=None)
             all_points = []
