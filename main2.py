@@ -1,14 +1,26 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, colorchooser
 import pandas as pd
 import ezdxf
 import os
+
+def rgb_to_aci(r, g, b):
+    """Approximate ACI index from RGB for AutoCAD"""
+    # Simplified color mapping for common colors
+    color_map = {
+        (255, 0, 0): 1, (255, 255, 0): 2, (0, 255, 0): 3,
+        (0, 255, 255): 4, (0, 0, 255): 5, (255, 0, 255): 6,
+        (255, 255, 255): 7
+    }
+    return color_map.get((r, g, b), 7)  # default to white
 
 class PolylineGroup:
     def __init__(self, parent, index, remove_callback):
         self.frame = ttk.LabelFrame(parent, text=f"Polyline {index+1}")
         self.index = index
         self.remove_callback = remove_callback
+        self.color_rgb = (255, 0, 0)  # Default red
+        self.color_aci = 1
 
         self.x_col = self._add_row("X Column (A-Z):", 0)
         self.x_from = self._add_row("X Row From:", 1)
@@ -18,17 +30,30 @@ class PolylineGroup:
         self.y_from = self._add_row("Y Row From:", 1, col_offset=2)
         self.y_to = self._add_row("Y Row To:", 2, col_offset=2)
 
+        # Color Picker
+        ttk.Label(self.frame, text="Color:").grid(row=3, column=0, sticky="e")
+        self.color_button = ttk.Button(self.frame, text="Pick Color", command=self.pick_color)
+        self.color_button.grid(row=3, column=1, sticky="w")
+
+        # Remove
+        self.remove_btn = ttk.Button(self.frame, text="Remove", command=self.remove)
+        self.remove_btn.grid(row=3, column=2, columnspan=2, sticky="e")
+
         self.frame.grid_columnconfigure(1, weight=1)
         self.frame.grid_columnconfigure(3, weight=1)
-
-        self.remove_btn = ttk.Button(self.frame, text="Remove", command=self.remove)
-        self.remove_btn.grid(row=3, column=0, columnspan=4, pady=5)
 
     def _add_row(self, label, row, col_offset=0):
         ttk.Label(self.frame, text=label).grid(row=row, column=col_offset, sticky="e")
         entry = ttk.Entry(self.frame, width=10)
-        entry.grid(row=row, column=col_offset+1, sticky="w")
+        entry.grid(row=row, column=col_offset + 1, sticky="w")
         return entry
+
+    def pick_color(self):
+        color_code = colorchooser.askcolor(title="Choose Color", initialcolor=self.color_rgb)
+        if color_code[0]:
+            self.color_rgb = tuple(map(int, color_code[0]))
+            self.color_aci = rgb_to_aci(*self.color_rgb)
+            self.color_button.configure(text=f"Color ACI: {self.color_aci}")
 
     def remove(self):
         self.frame.destroy()
@@ -42,7 +67,7 @@ class PolylineGroup:
             x_to = int(self.x_to.get()) - 1
             y_from = int(self.y_from.get()) - 1
             y_to = int(self.y_to.get()) - 1
-            return x_col, x_from, x_to, y_col, y_from, y_to
+            return x_col, x_from, x_to, y_col, y_from, y_to, self.color_aci
         except Exception as e:
             raise ValueError(f"Invalid input in Polyline {self.index+1}: {e}")
 
@@ -52,7 +77,6 @@ class DXFApp:
         self.root.title("Excel to DXF Polyline Generator")
         self.groups = []
 
-        # --- Top Frame ---
         top_frame = ttk.Frame(root, padding=10)
         top_frame.pack(fill=tk.X)
 
@@ -61,7 +85,6 @@ class DXFApp:
         self.file_entry.pack(side=tk.LEFT, padx=5)
         ttk.Button(top_frame, text="Browse", command=self.select_file).pack(side=tk.LEFT)
 
-        # --- Sheet Selection ---
         sheet_frame = ttk.Frame(root, padding=10)
         sheet_frame.pack(fill=tk.X)
         ttk.Label(sheet_frame, text="Sheet:").pack(side=tk.LEFT)
@@ -69,7 +92,6 @@ class DXFApp:
         self.sheet_dropdown = ttk.Combobox(sheet_frame, textvariable=self.sheet_var, state="readonly")
         self.sheet_dropdown.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # --- Output and Options ---
         options_frame = ttk.Frame(root, padding=10)
         options_frame.pack(fill=tk.X)
 
@@ -81,17 +103,15 @@ class DXFApp:
         self.debug_var = tk.BooleanVar()
         ttk.Checkbutton(options_frame, text="Debug Mode", variable=self.debug_var).pack(side=tk.LEFT, padx=5)
 
-        # --- Polyline Groups Area ---
         self.group_container = ttk.Frame(root, padding=10)
         self.group_container.pack(fill=tk.BOTH, expand=True)
 
-        # --- Control Buttons ---
         btn_frame = ttk.Frame(root, padding=10)
         btn_frame.pack(fill=tk.X)
         ttk.Button(btn_frame, text="➕ Add Polyline", command=self.add_group).pack(side=tk.LEFT)
         ttk.Button(btn_frame, text="Generate DXF", command=self.generate_dxf).pack(side=tk.RIGHT)
 
-        self.add_group()  # Add first group by default
+        self.add_group()
 
     def select_file(self):
         path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx *.xls")])
@@ -131,9 +151,10 @@ class DXFApp:
 
             df = pd.read_excel(file_path, sheet_name=sheet, header=None)
             all_points = []
+            layer_colors = []
 
             for group in self.groups:
-                x_col, x_from, x_to, y_col, y_from, y_to = group.get_data()
+                x_col, x_from, x_to, y_col, y_from, y_to, color = group.get_data()
                 x_vals = df.iloc[x_from:x_to+1, x_col].values
                 y_vals = df.iloc[y_from:y_to+1, y_col].values
                 if len(x_vals) != len(y_vals):
@@ -141,23 +162,23 @@ class DXFApp:
                 points = list(zip(x_vals, y_vals))
                 points.sort(key=lambda pt: pt[0])
                 all_points.append(points)
+                layer_colors.append(color)
 
-            # Write DXF
             doc = ezdxf.new()
             msp = doc.modelspace()
-            layer_name = "PolylineLayer"
-            if layer_name not in doc.layers:
-                doc.layers.new(name=layer_name, dxfattribs={"color": 1})
-            for pts in all_points:
+
+            for i, (pts, color) in enumerate(zip(all_points, layer_colors)):
+                layer_name = f"Polyline_{i+1}"
+                if layer_name not in doc.layers:
+                    doc.layers.new(name=layer_name, dxfattribs={"color": color})
                 msp.add_lwpolyline(pts, dxfattribs={"layer": layer_name})
 
             doc.saveas(output_name)
-            msg = f"DXF saved as '{output_name}' with {len(all_points)} polylines."
 
             if debug:
                 self.debug_compare(output_name, all_points)
 
-            messagebox.showinfo("Success", msg)
+            messagebox.showinfo("Success", f"DXF saved as '{output_name}' with {len(all_points)} polylines.")
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
@@ -187,7 +208,7 @@ class DXFApp:
         except Exception as e:
             messagebox.showerror("Debug Error", f"Failed to read DXF: {e}")
 
-# --- Run App ---
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = DXFApp(root)
