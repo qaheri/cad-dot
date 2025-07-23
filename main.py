@@ -73,7 +73,7 @@ class PolylineGroup:
 class DXFApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Add Polyline to AutoCad via Excel | v1.1 by Pendar")
+        self.root.title("Draw Polyline to AutoCad via Excel | v1.1 by Pendar")
         self.groups = []
 
         top_frame = ttk.Frame(root, padding=10)
